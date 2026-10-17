@@ -888,21 +888,23 @@ function mountainRange(r0, r1, height, scale, seed, fogReach) {
   geo.rotateX(-Math.PI / 2);
   geo.computeVertexNormals();
   const nrm = geo.attributes.normal, cols = [], c = new THREE.Color();
-  const dust = col('#8b7a62'), rock = col('#5f5a54'), ridge = col('#a8957c'), haze = col('#7f8f9f'), snow = col('#f7f9fb');
+  const dust = col('#7a5c3e'), rock = col('#4a3d33'), ridge = col('#8c6c4c'), scrub = col('#4a6a2a'), haze = col('#5d6b4f'), snow = col('#f4f6f8');
   for (let i = 0; i < pos.count; i++) {
     const h = pos.getY(i), slope = 1 - nrm.getY(i), x = pos.getX(i), z = pos.getZ(i);
     c.copy(dust).lerp(rock, clamp(slope * 1.8, 0, 1)).lerp(ridge, clamp((h - height * 0.45) / (height * 0.45), 0, 0.6) * (1 - slope));
-    c.lerp(haze, 0.25 * hash2(i, 3));
-    const line = height * 0.42 + (vnoise(x / 80, z / 80) - 0.5) * height * 0.18;
-    c.lerp(snow, smooth(line, line + height * 0.06, h) * clamp(1.15 - slope * 1.7, 0, 1));
+    c.lerp(scrub, (1 - smooth(height * 0.08, height * 0.3, h)) * clamp(1 - slope * 2, 0, 1) * 0.8);
+    c.lerp(haze, 0.15 * hash2(i, 3));
+    const line = height * 0.72 + (vnoise(x / 80, z / 80) - 0.5) * height * 0.14;
+    c.lerp(snow, smooth(line, line + height * 0.05, h) * clamp(1.1 - slope * 1.8, 0, 1));
     cols.push(c.r, c.g, c.b);
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+  const hazeLin = col('#8fa6bf');
   mat.onBeforeCompile = sh => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <fog_fragment>',
       `#ifdef USE_FOG
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, smoothstep(fogNear, fogFar * ${fogReach.toFixed(2)}, fogDepth) * 0.82);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(${hazeLin.r.toFixed(4)}, ${hazeLin.g.toFixed(4)}, ${hazeLin.b.toFixed(4)}), smoothstep(fogNear, fogFar * ${fogReach.toFixed(2)}, fogDepth) * 0.38);
       #endif`);
   };
   const m = new THREE.Mesh(geo, mat);
