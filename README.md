@@ -23,7 +23,6 @@ Open-world 3D driving game in the browser, built with three.js. Drive a flying e
 | B | Boost |
 | P | Autopilot |
 | T | Glass roof |
-| V | Switch car |
 | R | Back on road |
 | M | Sound |
 

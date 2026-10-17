@@ -1085,9 +1085,6 @@ function makeCar(color, hero, taxi) {
   return g;
 }
 
-const coupe = makeCar('#17b6cb', true);
-coupe.visible = false;
-scene.add(coupe);
 
 // Electric roadster: faceted wedge body, gull-wing doors, rear wing, thrusters that fire in flight mode
 const plateTex = canvasTex(256, 80, (g) => {
@@ -1208,7 +1205,7 @@ function makeRoadster(color) {
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 5.8), blobMat);
   sh.rotation.x = -Math.PI / 2; sh.position.y = 0.04;
   g.add(sh);
-  g.userData = { wheels, tail, blob: sh, holders, flames, canFly: true, canopy, doors };
+  g.userData = { wheels, tail, blob: sh, holders, flames, canopy, doors };
   return g;
 }
 const roadster = makeRoadster('#c5c8cd');
@@ -1585,7 +1582,6 @@ function showReady() {
         <div><kbd>B</kbd><span>Boost</span></div>
         <div><kbd>P</kbd><span>Autopilot</span></div>
         <div><kbd>T</kbd><span>Glass roof</span></div>
-        <div><kbd>V</kbd><span>Switch car</span></div>
         <div><kbd>R</kbd><span>Back on road</span></div>
         <div><kbd>M</kbd><span>Sound</span></div>
       </div>
@@ -1610,18 +1606,10 @@ function popup(html) {
 function toggleFly() {
   if (state !== 'play' || car.stunt) return;
   if (car.batt <= 0) { popup('Battery empty · find a <b>Supercharger</b>'); return; }
-  if (!player.userData.canFly) { popup('This car can’t fly · press <b>V</b>'); return; }
   car.fly = !car.fly;
   car.auto = null;
   popup(car.fly ? 'Flight mode <b>on</b>' : 'Flight mode <b>off</b>');
   oneShot(car.fly ? 300 : 600, 0.4, 0.07);
-}
-function switchCar() {
-  if (state !== 'play') return;
-  player.visible = false;
-  player = player === roadster ? coupe : roadster;
-  player.visible = true;
-  if (!player.userData.canFly) car.fly = false;
 }
 function toggleRoof() {
   const cp = player.userData.canopy;
@@ -1751,7 +1739,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyR' && state === 'play') resetToRoad();
   if (e.code === 'KeyF' && !e.repeat) toggleFly();
-  if (e.code === 'KeyV' && !e.repeat) switchCar();
   if (e.code === 'KeyP' && !e.repeat) toggleAuto();
   if (e.code === 'KeyT' && !e.repeat) toggleRoof();
 });
