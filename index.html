@@ -394,15 +394,36 @@ const FACADES = [
 const LOW_FACADES = FACADES.slice(0, 6), TOWER_FACADES = FACADES.slice(6);
 const ROOFS = ['#3b3640', '#4a4440', '#2f3438', '#5a4e45'].map(c => new THREE.MeshStandardMaterial({ color: col(c), roughness: 0.9 }));
 
+// Wave normal map: a sum of tiling sine waves, scrolled every frame
+function waveNormals(repeatX, repeatY) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d'), img = g.createImageData(256, 256);
+  const waves = [];
+  for (let k = 0; k < 14; k++) waves.push([(k % 7) - 3 || 2, ((k * 3) % 9) - 4, (k * 2.39) % 6.28, 1 / (1 + k * 0.35)]);
+  const h = (x, y) => waves.reduce((t, [a, b, ph, m]) => t + m * Math.sin(2 * Math.PI * (a * x + b * y) / 256 + ph), 0);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+    const nx = -(h(x + 1, y) - h(x - 1, y)) * 0.9, ny = -(h(x, y + 1) - h(x, y - 1)) * 0.9, l = Math.hypot(nx, ny, 1), o = (y * 256 + x) * 4;
+    img.data[o] = (nx / l * 0.5 + 0.5) * 255; img.data[o + 1] = (ny / l * 0.5 + 0.5) * 255; img.data[o + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeatX, repeatY);
+  return t;
+}
+const waveMaps = [];
+
 // Ground: grass on both banks of the Indus, which runs north-south east of the city
-const RX0 = 380, BAY = 14, BAYS = 13, RX1 = RX0 + BAY * BAYS, WATER_Y = -5, WORLD = 20000;
+const RX0 = 380, BAY = 14, BAYS = 13, RX1 = RX0 + BAY * BAYS, WATER_Y = -5, WORLD = 20000, COAST = 720, SEA_Y = -0.6;
+const LAND = COAST - 50 + WORLD / 2, LAND_Z = (COAST - 50 - WORLD / 2) / 2;
 [[-WORLD / 2, RX0], [RX1, WORLD / 2]].forEach(([a, b]) => {
   const t = grassTex.clone();
   t.needsUpdate = true;
-  t.repeat.set((b - a) / 10, WORLD / 10);
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(b - a, WORLD), new THREE.MeshStandardMaterial({ map: t, roughness: 1 }));
+  t.repeat.set((b - a) / 10, LAND / 10);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(b - a, LAND), new THREE.MeshStandardMaterial({ map: t, roughness: 1 }));
   m.rotation.x = -Math.PI / 2;
-  m.position.set((a + b) / 2, -0.05, 0);
+  m.position.set((a + b) / 2, -0.05, LAND_Z);
   m.receiveShadow = true;
   scene.add(m);
 });
@@ -639,12 +660,14 @@ const stone = new THREE.MeshStandardMaterial({ color: col('#d9c4a0'), roughness:
 const steel = new THREE.MeshStandardMaterial({ color: col('#2b2a30'), metalness: 0.7, roughness: 0.45 });
 const glowSteel = new THREE.MeshStandardMaterial({ color: col('#3a2a20'), emissive: col('#ff8a3a'), emissiveIntensity: 0.9, metalness: 0.5, roughness: 0.5 });
 {
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(RX1 - RX0, WORLD), new THREE.MeshStandardMaterial({ color: col('#1f6fa8'), metalness: 0.55, roughness: 0.1, envMapIntensity: 1.1 }));
+  const riverWaves = waveNormals((RX1 - RX0) / 30, LAND / 30);
+  waveMaps.push(riverWaves);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(RX1 - RX0, LAND + 60), new THREE.MeshStandardMaterial({ color: col('#1f6fa8'), metalness: 0.55, roughness: 0.1, envMapIntensity: 1.1, normalMap: riverWaves, normalScale: new THREE.Vector2(0.5, 0.5) }));
   water.rotation.x = -Math.PI / 2;
-  water.position.set((RX0 + RX1) / 2, WATER_Y, 0);
+  water.position.set((RX0 + RX1) / 2, WATER_Y, LAND_Z + 30);
   scene.add(water);
   const bankMat = new THREE.MeshStandardMaterial({ color: col('#9b8467'), roughness: 1 });
-  [RX0, RX1].forEach(x => { const b = new THREE.Mesh(new THREE.BoxGeometry(1.2, 7, WORLD), bankMat); b.position.set(x, -3.5, 0); scene.add(b); });
+  [RX0, RX1].forEach(x => { const b = new THREE.Mesh(new THREE.BoxGeometry(1.2, 7, LAND), bankMat); b.position.set(x, -3.5, LAND_Z); scene.add(b); });
 
   const hwyTex = canvasTex(256, 256, (g, W, H) => {
     g.fillStyle = ASPHALT; g.fillRect(0, 0, W, H); speckle(g, W, H, 2500);
@@ -664,6 +687,61 @@ const glowSteel = new THREE.MeshStandardMaterial({ color: col('#3a2a20'), emissi
   };
   DECKS.forEach(d => { roadX(CITY / 2, RX0, d.z); roadX(RX0, RX1, d.z, 0.04); roadX(RX1, RX1 + 1500, d.z); });
   roadX(-620, -CITY / 2, 0);
+
+  // Sea to the south: sandy beach sloping into open water, umbrellas, palms and a coast road
+  const seaWaves = waveNormals(WORLD / 40, WORLD / 80);
+  waveMaps.push(seaWaves);
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(WORLD, WORLD / 2), new THREE.MeshStandardMaterial({ color: col('#17699c'), metalness: 0.45, roughness: 0.12, envMapIntensity: 1.1, normalMap: seaWaves, normalScale: new THREE.Vector2(0.6, 0.6) }));
+  sea.rotation.x = -Math.PI / 2;
+  sea.position.set(0, SEA_Y, COAST + WORLD / 4);
+  scene.add(sea);
+  const sandTex = canvasTex(256, 256, (g, W, H) => {
+    g.fillStyle = '#e2cc98'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 6000; i++) { g.fillStyle = Math.random() < 0.5 ? 'rgba(170,140,90,.25)' : 'rgba(255,245,220,.3)'; g.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
+  });
+  sandTex.wrapS = sandTex.wrapT = THREE.RepeatWrapping;
+  const sandMat = new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1 });
+  [[-WORLD / 2, RX0], [RX1, WORLD / 2]].forEach(([a, b]) => {
+    const t = sandTex.clone(); t.needsUpdate = true; t.repeat.set((b - a) / 8, 90 / 8);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([a, -0.04, COAST - 50, b, -0.04, COAST - 50, a, -0.04, COAST, b, -0.04, COAST, a, -3, COAST + 40, b, -3, COAST + 40], 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 0.55, 1, 0.55, 0, 1, 1, 1], 2));
+    g.setIndex([0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5]);
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: t, roughness: 1 }));
+    m.receiveShadow = true;
+    scene.add(m);
+  });
+  const foam = new THREE.Mesh(new THREE.PlaneGeometry(WORLD, 3), new THREE.MeshBasicMaterial({ color: col('#ffffff'), transparent: true, opacity: 0.35, depthWrite: false }));
+  foam.rotation.x = -Math.PI / 2;
+  foam.position.set(0, SEA_Y + 0.03, COAST + 7);
+  scene.add(foam);
+  waveMaps.foam = foam;
+  const roadZ = (z0, z1, x) => {
+    const len = z1 - z0, t = hwyTex.clone();
+    t.needsUpdate = true; t.repeat.set(1, len / 12);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(ROAD, len).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: t, roughness: 0.8 }));
+    m.position.set(x, 0.02, (z0 + z1) / 2);
+    m.receiveShadow = true;
+    scene.add(m);
+  };
+  roadX(-2400, RX0 - 1, COAST - 70);
+  roadX(RX1 + 1, 2400, COAST - 70);
+  roadZ(CITY / 2, COAST - 77, node(5));
+  const UMBRELLAS = ['#e63946', '#f4a261', '#2a9d8f', '#e9c46a', '#457b9d', '#ff6fb5', '#ffffff'].map(c => new THREE.MeshStandardMaterial({ color: col(c), roughness: 0.7, side: THREE.DoubleSide }));
+  const canopyGeo = new THREE.ConeGeometry(1.7, 0.6, 10, 1, true), poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.4, 6), towelGeo = new THREE.BoxGeometry(0.9, 0.05, 1.9);
+  for (let k = 0; k < 70; k++) {
+    const x = rnd(-700, 1000), z = rnd(COAST - 42, COAST - 8);
+    if (x > RX0 - 5 && x < RX1 + 5) continue;
+    staticMesh(poleGeo, metal, x, 1.2, z);
+    staticMesh(canopyGeo, pick(UMBRELLAS), x, 2.5, z);
+    staticMesh(towelGeo, pick(UMBRELLAS), x + 1.3, 0.0, z + 0.4, rnd(-0.4, 0.4));
+  }
+  for (let k = 0; k < 90; k++) {
+    const x = rnd(-1200, 1400), z = rnd(COAST - 60, COAST - 44);
+    if (x > RX0 - 5 && x < RX1 + 5) continue;
+    palms.push({ x, z, r: rnd(0, 6.3), s: rnd(0.9, 1.3) });
+  }
 
   // Sukkur Barrage: sandstone arches, steel gates, gantry cranes, lamps
   const B = DECKS[0];
@@ -754,14 +832,14 @@ const glowSteel = new THREE.MeshStandardMaterial({ color: col('#3a2a20'), emissi
 
   // Old town on the far bank
   for (let k = 0; k < 80; k++) {
-    const x = rnd(RX1 + 40, RX1 + 650), z = rnd(-750, 750);
+    const x = rnd(RX1 + 40, RX1 + 650), z = rnd(-750, COAST - 90);
     if (DECKS.some(d => Math.abs(z - d.z) < 20)) continue;
     const w = rnd(8, 18), d = rnd(8, 18), h = rnd(4, 12), mat = pick(LOW_FACADES), roof = pick(ROOFS);
     staticMesh(boxUV(new THREE.BoxGeometry(w, h, d), w, h, d), [mat, mat, roof, roof, mat, mat], x, h / 2, z);
     extraBoxes.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, top: h });
   }
   for (let k = 0; k < 140; k++) {
-    const east = k % 2, z = rnd(-900, 900);
+    const east = k % 2, z = rnd(-900, COAST - 60);
     if (DECKS.some(d => Math.abs(z - d.z) < 12)) continue;
     palms.push({ x: east ? rnd(RX1 + 5, RX1 + 35) : rnd(CITY / 2 + 8, RX0 - 6), z, r: rnd(0, 6.3), s: rnd(0.8, 1.3) });
   }
@@ -883,7 +961,8 @@ function mountainRange(r0, r1, height, scale, seed, fogReach) {
     const x = pos.getX(i), y = pos.getY(i), r = Math.hypot(x, y);
     const env = smooth(r0, r0 + (r1 - r0) * 0.3, r) * (0.75 + 0.25 * vnoise(x / 700 + seed, y / 700));
     const big = 0.55 + 0.45 * vnoise(x / 420 + 7 + seed, y / 420 - 3);
-    pos.setZ(i, 0.8 + ridged((x + seed * 37) / scale, (y - seed * 23) / scale) * env * big * height);
+    const gap = smooth(0.1, 0.45, -y / r);
+    pos.setZ(i, (0.8 + ridged((x + seed * 37) / scale, (y - seed * 23) / scale) * env * big * height) * (1 - gap) - gap * 8);
   }
   geo.rotateX(-Math.PI / 2);
   geo.computeVertexNormals();
@@ -1641,6 +1720,12 @@ function stuntStep(dt) {
   }
 }
 function respawnBank() {
+  if (car.z > COAST) {
+    car.z = COAST - 70 - 1.75; car.y = 0; car.h = Math.PI / 2;
+    if (car.x > RX0 - 10 && car.x < RX1 + 10) car.x = RX0 - 30;
+    car.vx = car.vz = car.vy = 0; car.fly = false; car.auto = null;
+    return;
+  }
   const d = DECKS.reduce((a, b) => Math.abs(b.z - car.z) < Math.abs(a.z - car.z) ? b : a);
   car.x = RX0 - 30; car.z = d.z + 1.75; car.y = 0; car.h = -Math.PI / 2;
   car.vx = car.vz = car.vy = 0; car.fly = false; car.auto = null;
@@ -1773,6 +1858,7 @@ function collideWorld() {
 }
 
 function groundAt(x, z, y) {
+  if (z > COAST) return -3;
   if (x > RX0 && x < RX1) {
     for (const d of DECKS) if (Math.abs(z - d.z) <= d.half && y >= -0.6) return 0;
     return WATER_Y - 0.6;
@@ -1797,6 +1883,9 @@ function drawMap() {
   c.translate(-car.x, -car.z);
   c.fillStyle = '#3a3c48'; c.fillRect(-CITY / 2, -CITY / 2, CITY, CITY);
   c.fillStyle = '#3f6e8c'; c.fillRect(RX0, car.z - 400, RX1 - RX0, 800);
+  c.fillStyle = '#d9c48f'; c.fillRect(car.x - 400, COAST - 50, 800, 50);
+  c.fillStyle = '#2f6f9e'; c.fillRect(car.x - 400, COAST, 800, 800);
+  c.fillStyle = '#3a3c48'; c.fillRect(car.x - 400, COAST - 77, 800, 14); c.fillRect(node(5) - 7, CITY / 2, 14, COAST - 77 - CITY / 2);
   c.fillStyle = '#3a3c48';
   for (const d of DECKS) c.fillRect(CITY / 2, d.z - 7, 1500, 14);
   c.fillRect(-620, -7, 620 - CITY / 2, 14);
@@ -1884,9 +1973,9 @@ function update(dt) {
     car.y = ground;
     car.vy = Math.max(0, car.vy);
   }
-  if (car.x > RX0 && car.x < RX1 && car.y < WATER_Y + 0.3) {
+  if ((car.z > COAST && car.y < SEA_Y - 0.4) || (car.x > RX0 && car.x < RX1 && car.z <= COAST && car.y < WATER_Y + 0.3)) {
     car.vx *= Math.exp(-3 * dt); car.vz *= Math.exp(-3 * dt);
-    if (splashT <= 0) { splashT = 1.4; car.fly = false; popup('Splash! You drove into the <b>Indus</b>'); thud(0.3); }
+    if (splashT <= 0) { splashT = 1.4; car.fly = false; popup(car.z > COAST ? 'Splash! You drove into the <b>sea</b>' : 'Splash! You drove into the <b>Indus</b>'); thud(0.3); }
   }
   }
   if (splashT > 0 && (splashT -= dt) <= 0) respawnBank();
@@ -2038,6 +2127,8 @@ function update(dt) {
   camera.updateProjectionMatrix();
   sky.position.copy(camera.position);
   mountains.position.set(car.x, 0, car.z);
+  waveMaps.forEach(t => { t.offset.x = clock * 0.004; t.offset.y = clock * 0.007; });
+  waveMaps.foam.material.opacity = 0.25 + Math.sin(clock * 1.3) * 0.12;
 
   sunLight.position.set(car.x + LIGHT_DIR.x * 160, LIGHT_DIR.y * 160, car.z + LIGHT_DIR.z * 160);
   sunLight.target.position.set(car.x, 0, car.z);
