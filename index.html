@@ -1982,21 +1982,21 @@ function update(dt) {
   if (state === 'play' && !car.auto) {
     if (!airborne || car.fly) {
       if (keys.up) vf += (vf < 0 ? 30 : (car.fly ? 22 : 11) * (boosting ? 1.35 : 1) * (1 - vf / top) + 3) * dt;
-      else if (keys.down) vf -= (vf > 0.5 ? 11 : 7) * dt;
+      else if (keys.down) vf -= (vf > 0.5 ? 20 : 9) * dt;
       else vf -= Math.sign(vf) * Math.min(Math.abs(vf), (1.2 + Math.abs(vf) * 0.03) * dt);
       if (keys.hand && !car.fly) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 9 * dt);
     }
     vf = clamp(vf, -REV, Math.max(top, vf - 12 * dt));
     const steer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
-    car.steer = damp(car.steer || 0, steer * 0.6 / (1 + Math.abs(vf) / 16), 5, dt);
+    car.steer = damp(car.steer || 0, steer * 0.62 / (1 + Math.abs(vf) / 32), 10, dt);
     let turn = 0;
     if (car.fly) turn = steer * 1.7 * (1 - 0.4 * Math.min(1, Math.abs(vf) / top));
     else if (!airborne) {
       turn = vf * Math.tan(car.steer) / 2.8;
       if (keys.hand) turn *= 1.5;
-      else { const lim = 9.5 / Math.max(Math.abs(vf), 1); turn = clamp(turn, -lim, lim); }
+      else { const lim = 26 / Math.max(Math.abs(vf), 1); turn = clamp(turn, -lim, lim); }
     }
-    car.yaw = damp(car.yaw, turn, car.fly ? 5 : 8, dt);
+    car.yaw = damp(car.yaw, turn, car.fly ? 5 : 12, dt);
     car.h -= car.yaw * dt;
   } else {
     vf = damp(vf, 0, 2, dt);
